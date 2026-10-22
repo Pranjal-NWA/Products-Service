@@ -31,6 +31,53 @@ namespace ProductsService.Migrations
                     b.Property<int?>("Blades")
                         .HasColumnType("integer");
 
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Grade")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<int?>("LiftKg")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("MotorOdMm")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal?>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)");
+
+                    b.Property<Guid>("SeriesId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int?>("SizeInch")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Sku")
+                        .IsRequired()
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sku")
+                        .IsUnique();
+
+                    b.HasIndex("SeriesId", "SizeInch");
+
+                    b.ToTable("Products");
+                });
+
+            modelBuilder.Entity("ProductsService.Models.ProductSeries", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Category")
                         .IsRequired()
                         .HasMaxLength(30)
@@ -42,46 +89,45 @@ namespace ProductsService.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text");
 
-                    b.Property<string>("Grade")
-                        .HasMaxLength(2)
-                        .HasColumnType("character varying(2)");
-
                     b.Property<string>("ImageUrl")
                         .HasColumnType("text");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<bool?>("IsFolding")
-                        .HasColumnType("boolean");
-
-                    b.Property<int?>("LiftKg")
-                        .HasColumnType("integer");
-
-                    b.Property<int?>("MotorOdMm")
-                        .HasColumnType("integer");
-
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("numeric");
-
-                    b.Property<string>("Series")
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<int?>("SizeInch")
-                        .HasColumnType("integer");
+                    b.Property<string>("Subcategory")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("Category");
+                    b.HasIndex("Name")
+                        .IsUnique();
 
-                    b.HasIndex("Series");
+                    b.HasIndex("Category", "Subcategory");
 
-                    b.ToTable("Products");
+                    b.ToTable("Series");
+                });
+
+            modelBuilder.Entity("ProductsService.Models.Product", b =>
+                {
+                    b.HasOne("ProductsService.Models.ProductSeries", "Series")
+                        .WithMany("Products")
+                        .HasForeignKey("SeriesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Series");
+                });
+
+            modelBuilder.Entity("ProductsService.Models.ProductSeries", b =>
+                {
+                    b.Navigation("Products");
                 });
 #pragma warning restore 612, 618
         }

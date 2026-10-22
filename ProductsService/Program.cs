@@ -1,11 +1,13 @@
+using System.Security.Claims;
 using System.Text;
+using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens;
 using ProductsService.Data;
 using ProductsService.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.AspNetCore.Authorization;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -36,12 +38,18 @@ if (string.IsNullOrWhiteSpace(jwtSecret))
     throw new InvalidOperationException("JWT secret key is not configured.");
 
 builder.Services.AddControllers()
-    .AddJsonOptions(o => o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(o =>
+    {
+        o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        // Hide fields that don't apply to a product (e.g. blades on a motor)
+        o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+    });
 
 builder.Services.AddDbContext<ProductsDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddSingleton<IImageStorage, LocalImageStorage>();
 
 // No AddIdentityCore, no UserManager, no SignInManager, no
 // AddDataProtection - this service never creates accounts or checks
@@ -70,14 +78,29 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 }
                 return Task.CompletedTask;
             },
+
+            // Accept the role whether the token carries it as "role" or as
+            // the long ClaimTypes.Role URI, so [Authorize(Roles = "Admin")] works either way.
+            OnTokenValidated = context =>
+            {
+                var identity = (ClaimsIdentity)context.Principal!.Identity!;
+                foreach (var c in identity.FindAll("role").ToList())
+                {
+                    if (!identity.HasClaim(ClaimTypes.Role, c.Value))
+                        identity.AddClaim(new Claim(ClaimTypes.Role, c.Value));
+                }
+                return Task.CompletedTask;
+            },
         };
     });
+
 builder.Services.AddAuthorization(options =>
 {
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
         .Build();
 });
+
 var frontendOrigin = builder.Configuration["Cors:FrontendOrigin"] ?? "http://localhost:5173";
 builder.Services.AddCors(options =>
 {
@@ -106,9 +129,19 @@ if (app.Environment.IsDevelopment())
 else
 {
     app.UseHsts();
+    app.UseHttpsRedirection();   // dev runs plain http (phone / Vite proxy)
 }
 
-app.UseHttpsRedirection();
+// Serve uploaded images from the local folder (before auth so they stay public)
+var uploadRoot = app.Configuration["Images:LocalPath"]
+    ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads", "products");
+Directory.CreateDirectory(uploadRoot);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(uploadRoot),
+    RequestPath = "/uploads/products",
+});
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
@@ -126,7 +159,7 @@ app.MapGet("/healthz", async (ProductsDbContext db) =>
     {
         return Results.Json(new { status = "error", db = "unreachable" }, statusCode: 503);
     }
-});
+}).AllowAnonymous();
 
 app.Run();
 
